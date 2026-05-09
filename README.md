@@ -27,6 +27,7 @@ Anything systemd-based should work for the optional auto-updater service (`syste
 | Linux tray + warm-start handoff | ✅ always | Single-instance lock, second-instance window focus |
 | GUI install prompts (`kdialog` / `zenity`) | ✅ if installed | Falls back to interactive terminal prompt |
 | Linux browser annotations | ✅ always | Stored-anchor screenshots, isolated marker rendering |
+| Chrome plugin native host | ✅ always | Bundles the upstream Chrome plugin, Linux native-messaging host, `turnEnded` rollout watcher, Chrome/Brave manifest sync, Linux settings status detection, and Brave-aware diagnostics |
 | Linux Computer Use | ⚠️ opt-in | Linux Computer Use backend with screen capture, accessibility, window targeting, and input synthesis. The MCP server registers by default; the in-app UI surface is enabled at your discretion — see "Enabling Computer Use UI" below. Validated on Ubuntu/GNOME, KDE Plasma/KWin, Hyprland, and i3. |
 | Server-gated features (e.g. `gpt-5.5`) | 🟡 server-side | OpenAI rolls per-account, not project-controlled. Building a fresh package does not unlock these. |
 
@@ -80,7 +81,7 @@ The flake handles dependencies and patches Electron for NixOS. A GitHub Actions 
 
 ## Linux Computer Use
 
-Linux Computer Use is an **opt-in** plugin that lets Codex inspect and control desktop apps on Linux through a native Rust MCP backend (`codex-computer-use-linux`). It is designed and maintained by [@avifenesh](https://github.com/avifenesh). It supports:
+Linux Computer Use is an **opt-in** plugin that lets Codex inspect and control desktop apps on Linux through a native Rust MCP backend (`codex-computer-use-linux`). The same Rust workspace also builds the Linux Chrome extension native-messaging host (`codex-chrome-extension-host`), including the session rollout watcher used to emit `turnEnded` for Chrome extension cleanup. It is designed and maintained by [@avifenesh](https://github.com/avifenesh). It supports:
 
 - **App listing & accessibility tree** — via AT-SPI bus (`org.a11y.Bus`)
 - **Screenshot capture** — primary path through GNOME Shell DBus, fallback through XDG Desktop Portal (`org.freedesktop.portal.Screenshot`)
@@ -216,7 +217,7 @@ Runtime files live in standard XDG locations:
 You need:
 
 - `python3`, `7z` (or `7zz`), `curl`, `unzip`, `make`, `g++`
-- **Rust toolchain** (`cargo`) for the `codex-update-manager` and `codex-computer-use-linux` crates
+- **Rust toolchain** (`cargo`) for the `codex-update-manager` and `codex-computer-use-linux` crates, including the Chrome extension host binary
 
 The installer downloads a managed Linux Node.js runtime into `codex-app/resources/node-runtime` and uses it for `node`, `npm`, and `npx` during the build. Existing `nvm`, asdf, Volta, NodeSource, or nodejs.org tarball installs are still fine, but they are no longer required for this project.
 

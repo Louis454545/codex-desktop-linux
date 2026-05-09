@@ -698,6 +698,41 @@ function applyBrowserUseNodeReplApprovalPatch(currentSource) {
   return currentSource.replace(needle, approvalPatch);
 }
 
+function applyLinuxChromeExtensionStatusPatch(currentSource) {
+  if (currentSource.includes("codexLinuxChromeProfileRoots")) {
+    return currentSource;
+  }
+
+  const fsVar = requireName(currentSource, "node:fs");
+  const osVar = requireName(currentSource, "node:os");
+  const pathVar = requireName(currentSource, "node:path");
+  if (fsVar == null || osVar == null || pathVar == null) {
+    console.warn(
+      "WARN: Could not find fs/os/path aliases — skipping Linux Chrome extension status patch",
+    );
+    return currentSource;
+  }
+
+  const blockStart = currentSource.indexOf("function lm({extensionId:");
+  const blockEnd = blockStart === -1 ? -1 : currentSource.indexOf("function dm(){", blockStart);
+  const originalBlock = blockEnd === -1 ? null : currentSource.slice(blockStart, blockEnd);
+  if (
+    blockStart === -1 ||
+    blockEnd === -1 ||
+    !originalBlock.includes("Opening Chrome extension settings is only supported on macOS and Windows")
+  ) {
+    console.warn(
+      "WARN: Could not find Chrome extension status functions — skipping Linux Chrome extension status patch",
+    );
+    return currentSource;
+  }
+
+  const replacement =
+    `function codexLinuxChromeProfileRoots({homeDir:e,platform:t}){return t===\`linux\`?[(0,${pathVar}.join)(e,\`.config\`,\`BraveSoftware\`,\`Brave-Browser\`),(0,${pathVar}.join)(e,\`.config\`,\`google-chrome\`),(0,${pathVar}.join)(e,\`.config\`,\`google-chrome-beta\`),(0,${pathVar}.join)(e,\`.config\`,\`google-chrome-unstable\`),(0,${pathVar}.join)(e,\`.config\`,\`chromium\`)]:[]}function codexLinuxChromeHasExtension({extensionId:e,homeDir:t,platform:n}){if(n!==\`linux\`)return!1;let r=pm(e);for(let e of codexLinuxChromeProfileRoots({homeDir:t,platform:n})){if(!(0,${fsVar}.existsSync)(e))continue;for(let t of (0,${fsVar}.readdirSync)(e,{withFileTypes:!0}))if(t.isDirectory()&&(0,${fsVar}.existsSync)((0,${pathVar}.join)(e,t.name,\`Extensions\`,r)))return!0}return!1}function codexLinuxChromeCommand(){let e=(process.env.PATH??\`\`).split(\`:\`);for(let t of[\`brave-browser\`,\`brave\`,\`google-chrome\`,\`google-chrome-stable\`,\`chromium-browser\`,\`chromium\`])for(let n of e){if(n.length===0)continue;let e=(0,${pathVar}.join)(n,t);try{if((0,${fsVar}.existsSync)(e)&&(0,${fsVar}.statSync)(e).isFile())return e}catch{}}return null}function lm({extensionId:e,homeDir:t=(0,${osVar}.homedir)(),localAppDataDir:n=process.env.LOCALAPPDATA,platform:a=process.platform}){if(a===\`linux\`)return codexLinuxChromeHasExtension({extensionId:e,homeDir:t,platform:a});let s=pm(e),c=mm({homeDir:t,localAppDataDir:n,platform:a});return c==null||!(0,${fsVar}.existsSync)(c)?!1:(0,${fsVar}.readdirSync)(c,{withFileTypes:!0}).some(e=>e.isDirectory()&&(0,${fsVar}.existsSync)((0,${pathVar}.join)(c,e.name,\`Extensions\`,s)))}async function um({extensionId:e,platform:t=process.platform,detectChromeCommand:n=dm,runCommand:r=Hp}){if(t===\`darwin\`){await r(om,[\`-b\`,am,cm(e)]);return}if(t===\`win32\`){let t=n();if(t==null)throw Error(\`Google Chrome is not installed\`);await r(t,[cm(e)]);return}if(t===\`linux\`){let t=codexLinuxChromeCommand()??n();if(t==null)throw Error(\`Google Chrome or Brave is not installed\`);await r(t,[cm(e)]);return}throw Error(\`Opening Chrome extension settings is only supported on macOS, Windows, and Linux\`)}`;
+
+  return currentSource.slice(0, blockStart) + replacement + currentSource.slice(blockEnd);
+}
+
 function applyLinuxGitOriginsSourceFallbackPatch(currentSource) {
   const fallbackSource = "linux_git_origins_missing_source_fallback";
   if (currentSource.includes(`source:\`${fallbackSource}\`,requestKind:`)) {
@@ -736,6 +771,7 @@ function applyLinuxGitOriginsSourceFallbackPatch(currentSource) {
 module.exports = {
   applyBrowserUseNodeReplApprovalPatch,
   applyLinuxAvatarOverlayMousePassthroughPatch,
+  applyLinuxChromeExtensionStatusPatch,
   applyLinuxExplicitIpcQuitPatch,
   applyLinuxExplicitTrayQuitPatch,
   applyLinuxFileManagerPatch,

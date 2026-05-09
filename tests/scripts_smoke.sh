@@ -133,6 +133,7 @@ SCRIPT
     assert_file_exists "$pkg_root/DEBIAN/prerm"
     assert_file_exists "$pkg_root/DEBIAN/postrm"
     assert_file_exists "$pkg_root/opt/codex-desktop/update-builder/scripts/lib/package-common.sh"
+    assert_file_exists "$pkg_root/opt/codex-desktop/update-builder/scripts/lib/patch-chrome-plugin.js"
     assert_file_exists "$pkg_root/opt/codex-desktop/update-builder/scripts/lib/node-runtime.sh"
     assert_file_exists "$pkg_root/opt/codex-desktop/update-builder/scripts/lib/linux-update-bridge-patch.js"
     assert_file_exists "$pkg_root/opt/codex-desktop/update-builder/scripts/lib/patch-report.js"
@@ -544,8 +545,16 @@ PY
     assert_contains "$REPO_DIR/launcher/start.sh.template" "resolve_update_manager_path"
     assert_contains "$REPO_DIR/launcher/start.sh.template" "run_update_manager"
     assert_contains "$REPO_DIR/launcher/start.sh.template" "sync_browser_use_bundled_plugin_cache"
+    assert_contains "$REPO_DIR/launcher/start.sh.template" "sync_chrome_bundled_plugin_cache"
+    assert_contains "$REPO_DIR/launcher/start.sh.template" "com.openai.codexextension"
+    assert_contains "$REPO_DIR/launcher/start.sh.template" ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts"
+    assert_contains "$REPO_DIR/launcher/start.sh.template" "scripts/check-extension-installed.js"
+    assert_contains "$REPO_DIR/launcher/start.sh.template" "scripts/chrome-is-running.js"
     assert_contains "$REPO_DIR/launcher/start.sh.template" ".tmp/bundled-marketplaces/openai-bundled"
     assert_contains "$REPO_DIR/launcher/start.sh.template" ".agents/plugins/marketplace.json"
+    assert_contains "$REPO_DIR/scripts/lib/bundled-plugins.sh" "stage_chrome_plugin_from_upstream"
+    assert_contains "$REPO_DIR/scripts/lib/patch-chrome-plugin.js" "Linux native host manifest location"
+    assert_contains "$REPO_DIR/computer-use-linux/src/bin/codex-chrome-extension-host.rs" "CODEX_BROWSER_USE_SOCKET_DIR"
     assert_contains "$REPO_DIR/flake.nix" "Browser Use bundled marketplace metadata"
     assert_contains "$REPO_DIR/flake.nix" ".tmp/bundled-marketplaces/openai-bundled"
     assert_contains "$REPO_DIR/launcher/start.sh.template" "Install it now? \\[Y/n\\]"
@@ -620,12 +629,12 @@ test_side_by_side_launcher_identity() {
     assert_contains "$app_dir/start.sh" '--user-data-dir="${CODEX_ELECTRON_USER_DATA_DIR:-$APP_STATE_DIR/electron-user-data}"'
     assert_contains "$app_dir/start.sh" "--force-renderer-accessibility"
     assert_contains "$app_dir/start.sh" 'LOG_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/$CODEX_LINUX_APP_ID"'
-    XDG_CACHE_HOME="$workspace/cache" XDG_STATE_HOME="$workspace/state" "$app_dir/start.sh" --help >"$help_log"
+    XDG_CACHE_HOME="$workspace/cache" XDG_STATE_HOME="$workspace/state" XDG_RUNTIME_DIR="$workspace/runtime" "$app_dir/start.sh" --help >"$help_log"
     assert_contains "$help_log" "Launches the Codex CUA Lab app."
     assert_contains "$help_log" "codex-cua-lab/launcher.log"
 
     ln -s "$app_dir/start.sh" "$bin_dir/codex-cua-lab"
-    XDG_CACHE_HOME="$workspace/cache" XDG_STATE_HOME="$workspace/state" "$bin_dir/codex-cua-lab" --help >"$symlink_help_log"
+    XDG_CACHE_HOME="$workspace/cache" XDG_STATE_HOME="$workspace/state" XDG_RUNTIME_DIR="$workspace/runtime" "$bin_dir/codex-cua-lab" --help >"$symlink_help_log"
     assert_contains "$symlink_help_log" "Launches the Codex CUA Lab app."
 }
 
@@ -675,6 +684,12 @@ test_browser_use_node_repl_fallback_runtime() {
         # shellcheck disable=SC1091
         source "$REPO_DIR/scripts/lib/bundled-plugins.sh"
         stage_linux_computer_use_plugin() { return 1; }
+        build_chrome_extension_host() {
+            local fake_host="$workspace/codex-chrome-extension-host"
+            printf '#!/bin/sh\n' > "$fake_host"
+            chmod +x "$fake_host"
+            printf '%s\n' "$fake_host"
+        }
         install_bundled_plugin_resources "$app_dir"
     ) >"$output_log" 2>&1
 
@@ -684,6 +699,135 @@ test_browser_use_node_repl_fallback_runtime() {
     assert_contains "$install_dir/resources/plugins/openai-bundled/plugins/browser-use/scripts/browser-client.mjs" "codexLinuxSiteStatusAllowlistFallback"
     assert_contains "$output_log" "Browser Use node_repl runtime is not a Linux executable for x86_64; skipping"
     assert_contains "$output_log" "Downloading Browser Use node_repl fallback runtime"
+}
+
+make_fake_chrome_upstream_app() {
+    local app_dir="$1"
+    local resources_dir="$app_dir/Contents/Resources"
+    local chrome_dir="$resources_dir/plugins/openai-bundled/plugins/chrome"
+
+    mkdir -p \
+        "$resources_dir/plugins/openai-bundled/.agents/plugins" \
+        "$chrome_dir/.codex-plugin" \
+        "$chrome_dir/scripts"
+
+    cat > "$resources_dir/plugins/openai-bundled/.agents/plugins/marketplace.json" <<'JSON'
+{"plugins":[{"name":"chrome","source":{"source":"local","path":"./plugins/chrome"},"policy":{"installation":"AVAILABLE"}}]}
+JSON
+    cat > "$chrome_dir/.codex-plugin/plugin.json" <<'JSON'
+{"name":"chrome","version":"0.1.7"}
+JSON
+    cat > "$chrome_dir/scripts/installManifest.mjs" <<'JS'
+var n={extensionId:"hehggadaopoacecdllhhajmbjkdcmajg",extensionHostName:"com.openai.codexextension"};var p=o=>{let t=`${o.extensionHostName}.json`,r={darwin:["Library/Application Support/Google/Chrome/NativeMessagingHosts"],linux:[".config/google-chrome/NativeMessagingHosts"],win32:["AppData/Local/OpenAI/extension"]}[m.platform()];return r.map(s=>l.resolve(m.homedir(),s,t))};
+JS
+    cat > "$chrome_dir/scripts/browser-client.mjs" <<'JS'
+import{resolve as GF}from"path";import{homedir as VF,platform as WF}from"os";var Tc=GF(VF(),WF()==="win32"?"AppData\\Local\\Google\\Chrome\\User Data":"Library/Application Support/Google/Chrome");
+async fetchBlocked(e){let r=await bS(e.endpoint,{method:"GET"});if(!r.ok)throw new Error(ae(`Browser Use cannot determine if ${e.displayUrl} is allowed. Please try again later or use another source.`));let n=await r.json();return TF(n)}
+JS
+    cat > "$chrome_dir/scripts/check-native-host-manifest.js" <<'JS'
+function getNativeHostManifestLocation() {
+  if (process.platform === "win32") {
+    const registryKey = `${WINDOWS_NATIVE_HOST_REGISTRY_KEY_PREFIX}\\${expectedHostName}`;
+    const registryManifestPath = readWindowsRegistryDefaultValue(registryKey);
+
+    return {
+      manifestPath: registryManifestPath || getDefaultWindowsManifestPath(),
+      registryKey,
+      registryManifestPath,
+      registryKeyExists: registryManifestPath != null,
+    };
+  }
+
+  throw new Error(
+    `Unsupported platform for native host manifest check: ${process.platform}. This script supports macOS and Windows.`,
+  );
+}
+JS
+    cat > "$chrome_dir/scripts/installed-browsers.js" <<'JS'
+const KNOWN_BROWSERS = [
+  {
+    name: "Google Chrome",
+    bundleIds: ["com.google.Chrome"],
+    appNames: ["Google Chrome.app"],
+    commands: ["google-chrome", "chrome"],
+    windowsExecutable: "chrome.exe",
+  },
+];
+JS
+    cat > "$chrome_dir/scripts/chrome-is-running.js" <<'JS'
+const CHROME_PROCESS_NAMES_BY_PLATFORM = {
+  darwin: new Set(["Google Chrome", "Google Chrome Helper"]),
+  win32: new Set(["chrome.exe"]),
+};
+JS
+    cat > "$chrome_dir/scripts/check-extension-installed.js" <<'JS'
+function resolveChromeUserDataDirectory() {
+  return path.join(os.homedir(), ".config", "google-chrome");
+}
+JS
+    cat > "$chrome_dir/scripts/open-chrome-window.js" <<'JS'
+function resolveChromeUserDataDirectory() {
+  return path.join(os.homedir(), ".config", "google-chrome");
+}
+
+function getOpenChromeCommand(profileDirectory) {
+  const chromeArgs = [
+    `--profile-directory=${profileDirectory}`,
+    "--new-window",
+    ABOUT_BLANK_URL,
+  ];
+
+  return {
+    command: "google-chrome",
+    args: chromeArgs,
+  };
+}
+JS
+}
+
+test_chrome_plugin_staging() {
+    info "Checking Chrome plugin staging"
+    local workspace="$TMP_DIR/chrome-plugin"
+    local app_dir="$workspace/Codex.app"
+    local install_dir="$workspace/install"
+    local output_log="$workspace/output.log"
+    local chrome_dir="$install_dir/resources/plugins/openai-bundled/plugins/chrome"
+    local host="$chrome_dir/extension-host/linux/x64/extension-host"
+
+    mkdir -p "$workspace" "$install_dir/resources"
+    make_fake_chrome_upstream_app "$app_dir"
+
+    (
+        SCRIPT_DIR="$REPO_DIR"
+        INSTALL_DIR="$install_dir"
+        WORK_DIR="$workspace/work"
+        ARCH="x86_64"
+        ICON_SOURCE="$workspace/missing-icon.png"
+        CODEX_APP_ID="codex-desktop"
+        mkdir -p "$WORK_DIR"
+        warn() { echo "[WARN] $*" >&2; }
+        info() { echo "[INFO] $*" >&2; }
+        # shellcheck disable=SC1091
+        source "$REPO_DIR/scripts/lib/bundled-plugins.sh"
+        stage_linux_computer_use_plugin() { return 1; }
+        install_bundled_plugin_resources "$app_dir"
+    ) >"$output_log" 2>&1
+
+    assert_file_exists "$host"
+    [ -x "$host" ] || fail "Expected Chrome extension host to be executable: $host"
+    assert_contains "$chrome_dir/scripts/installManifest.mjs" "BraveSoftware/Brave-Browser/NativeMessagingHosts"
+    assert_contains "$chrome_dir/scripts/installed-browsers.js" "Brave Browser"
+    assert_contains "$chrome_dir/scripts/chrome-is-running.js" "brave-browser"
+    assert_contains "$chrome_dir/scripts/check-native-host-manifest.js" 'process.platform === "linux"'
+    assert_contains "$chrome_dir/scripts/check-native-host-manifest.js" "BraveSoftware"
+    assert_contains "$chrome_dir/scripts/check-extension-installed.js" "linuxBraveUserDataDirectory"
+    assert_contains "$chrome_dir/scripts/check-extension-installed.js" "linuxCandidateWithInstalledExtension"
+    assert_contains "$chrome_dir/scripts/open-chrome-window.js" "brave-browser"
+    assert_contains "$chrome_dir/scripts/open-chrome-window.js" "defaultBrowser ==="
+    assert_contains "$chrome_dir/scripts/browser-client.mjs" ".config/google-chrome"
+    assert_contains "$chrome_dir/scripts/browser-client.mjs" "codexLinuxSiteStatusAllowlistFallback"
+    assert_contains "$install_dir/resources/plugins/openai-bundled/.agents/plugins/marketplace.json" '"name": "chrome"'
+    assert_contains "$output_log" "Chrome plugin staged from upstream DMG"
 }
 
 make_fake_extracted_asar() {
@@ -1855,6 +1999,7 @@ main() {
     test_installer_keeps_electron_fallback_for_bad_metadata
     test_managed_node_runtime_source_install
     test_browser_use_node_repl_fallback_runtime
+    test_chrome_plugin_staging
     test_launcher_template_sanity
     test_side_by_side_launcher_identity
     test_linux_file_manager_patch_smoke

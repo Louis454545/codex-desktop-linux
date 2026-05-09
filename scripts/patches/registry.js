@@ -19,6 +19,7 @@ const {
 const {
   applyLinuxAvatarOverlayMousePassthroughPatch,
   applyBrowserUseNodeReplApprovalPatch,
+  applyLinuxChromeExtensionStatusPatch,
   applyLinuxExplicitIpcQuitPatch,
   applyLinuxExplicitTrayQuitPatch,
   applyLinuxFileManagerPatch,
@@ -135,6 +136,11 @@ const MAIN_BUNDLE_PATCHES = [
     name: "browser-use-node-repl-approval",
     ciPolicy: OPTIONAL,
     apply: (source) => applyBrowserUseNodeReplApprovalPatch(source),
+  },
+  {
+    name: "linux-chrome-extension-status",
+    ciPolicy: REQUIRED_UPSTREAM,
+    apply: (source) => applyLinuxChromeExtensionStatusPatch(source),
   },
   {
     name: "linux-app-updater-menu",

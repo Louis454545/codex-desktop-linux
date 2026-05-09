@@ -365,6 +365,166 @@ sync_browser_use_bundled_plugin_cache() {
     fi
 }
 
+chrome_extension_host_arch() {
+    case "$(uname -m)" in
+        x86_64) echo "x64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        *) return 1 ;;
+    esac
+}
+
+write_chrome_native_host_manifests() {
+    local host_path="$1"
+
+    python3 - "$host_path" "$HOME" <<'PY'
+import json
+import pathlib
+import sys
+
+host_path = sys.argv[1]
+home = pathlib.Path(sys.argv[2])
+manifest_name = "com.openai.codexextension.json"
+manifest = {
+    "name": "com.openai.codexextension",
+    "description": "Codex chrome native messaging host",
+    "type": "stdio",
+    "path": host_path,
+    "allowed_origins": ["chrome-extension://hehggadaopoacecdllhhajmbjkdcmajg/"],
+}
+text = json.dumps(manifest, separators=(",", ":"))
+
+for relative in (
+    ".config/google-chrome/NativeMessagingHosts",
+    ".config/BraveSoftware/Brave-Browser/NativeMessagingHosts",
+):
+    directory = home / relative
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / manifest_name
+    try:
+        if path.read_text(encoding="utf-8") == text:
+            continue
+    except OSError:
+        pass
+    path.write_text(text, encoding="utf-8")
+PY
+}
+
+sync_chrome_bundled_plugin_cache() {
+    local source_plugin="$SCRIPT_DIR/resources/plugins/openai-bundled/plugins/chrome"
+    local source_marketplace="$SCRIPT_DIR/resources/plugins/openai-bundled/.agents/plugins/marketplace.json"
+    local plugin_json="$source_plugin/.codex-plugin/plugin.json"
+    local codex_home="${CODEX_HOME:-$HOME/.codex}"
+    local extension_arch
+    local source_host
+    local source_client
+    local source_install_manifest
+    local version
+    local cache_root
+    local cache_plugin
+    local cache_host
+    local cache_client
+    local cache_install_manifest
+    local cache_parent
+    local tmp_plugin
+    local marketplace_root
+    local marketplace_plugins_dir
+    local marketplace_plugin_link
+    local host_path
+    local needs_copy=1
+
+    [ -f "$plugin_json" ] || return 0
+    [ -d "$source_plugin" ] || return 0
+
+    if ! extension_arch="$(chrome_extension_host_arch)"; then
+        return 0
+    fi
+
+    source_host="$source_plugin/extension-host/linux/$extension_arch/extension-host"
+    source_client="$source_plugin/scripts/browser-client.mjs"
+    source_install_manifest="$source_plugin/scripts/installManifest.mjs"
+    [ -x "$source_host" ] || return 0
+    [ -f "$source_client" ] || return 0
+    [ -f "$source_install_manifest" ] || return 0
+
+    version="$(bundled_plugin_version "$plugin_json" 2>/dev/null || true)"
+    [ -n "$version" ] || return 0
+
+    cache_root="$codex_home/plugins/cache/openai-bundled/chrome"
+    cache_plugin="$cache_root/$version"
+    cache_host="$cache_plugin/extension-host/linux/$extension_arch/extension-host"
+    cache_client="$cache_plugin/scripts/browser-client.mjs"
+    cache_install_manifest="$cache_plugin/scripts/installManifest.mjs"
+
+    if [ -f "$cache_plugin/.codex-plugin/plugin.json" ] && \
+        [ -f "$cache_host" ] && \
+        [ -f "$cache_client" ] && \
+        [ -f "$cache_install_manifest" ] && \
+        cmp -s "$plugin_json" "$cache_plugin/.codex-plugin/plugin.json" && \
+        cmp -s "$source_host" "$cache_host" && \
+        cmp -s "$source_client" "$cache_client" && \
+        cmp -s "$source_install_manifest" "$cache_install_manifest"; then
+        needs_copy=0
+    fi
+
+    if [ "$needs_copy" -eq 0 ]; then
+        local relative
+        for relative in \
+            scripts/check-extension-installed.js \
+            scripts/check-native-host-manifest.js \
+            scripts/chrome-is-running.js \
+            scripts/installed-browsers.js \
+            scripts/open-chrome-window.js; do
+            if [ ! -f "$cache_plugin/$relative" ] || ! cmp -s "$source_plugin/$relative" "$cache_plugin/$relative"; then
+                needs_copy=1
+                break
+            fi
+        done
+    fi
+
+    if [ "$needs_copy" -eq 1 ]; then
+        cache_parent="$(dirname "$cache_plugin")"
+        tmp_plugin="$cache_parent/.chrome-$version.tmp.$$"
+        rm -rf "$tmp_plugin"
+        mkdir -p "$cache_parent"
+
+        if cp -R "$source_plugin" "$tmp_plugin"; then
+            find "$tmp_plugin" -type f -name '*:com.apple.*' -delete
+            rm -rf "$cache_plugin"
+            mv "$tmp_plugin" "$cache_plugin"
+            echo "Chrome plugin cache synced from bundled resources: $cache_plugin"
+        else
+            rm -rf "$tmp_plugin"
+            echo "Chrome plugin cache sync failed; continuing with existing cache."
+            return 0
+        fi
+    fi
+
+    if [ -e "$cache_root/latest" ] && [ ! -L "$cache_root/latest" ]; then
+        rm -rf "$cache_root/latest"
+    fi
+    ln -sfn "$version" "$cache_root/latest"
+
+    marketplace_root="$codex_home/.tmp/bundled-marketplaces/openai-bundled"
+    marketplace_plugins_dir="$marketplace_root/.agents/plugins"
+    marketplace_plugin_link="$marketplace_root/plugins/chrome"
+    mkdir -p "$marketplace_plugins_dir" "$marketplace_root/plugins"
+    if [ -f "$source_marketplace" ]; then
+        rm -f "$marketplace_plugins_dir/marketplace.json"
+        cp "$source_marketplace" "$marketplace_plugins_dir/marketplace.json" && \
+            chmod u+w "$marketplace_plugins_dir/marketplace.json" || \
+            echo "Chrome bundled marketplace sync failed; continuing with existing marketplace cache."
+    fi
+    if [ -e "$marketplace_plugin_link" ] && [ ! -L "$marketplace_plugin_link" ]; then
+        rm -rf "$marketplace_plugin_link"
+    fi
+    ln -sfn "$cache_root/latest" "$marketplace_plugin_link"
+
+    host_path="$cache_root/latest/extension-host/linux/$extension_arch/extension-host"
+    [ -x "$host_path" ] || return 0
+    write_chrome_native_host_manifests "$host_path" || \
+        echo "Chrome native host manifest sync failed; continuing with existing browser manifests."
+}
+
 sync_computer_use_bundled_plugin_cache() {
     local source_plugin="$SCRIPT_DIR/resources/plugins/openai-bundled/plugins/computer-use"
     local source_marketplace="$SCRIPT_DIR/resources/plugins/openai-bundled/.agents/plugins/marketplace.json"
@@ -1330,6 +1490,7 @@ fi
 export_packaged_runtime_env
 if needs_cold_start; then
     sync_browser_use_bundled_plugin_cache
+    sync_chrome_bundled_plugin_cache
     sync_computer_use_bundled_plugin_cache
 fi
 resolve_browser_use_runtime_env

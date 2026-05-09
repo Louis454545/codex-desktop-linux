@@ -17,6 +17,7 @@ const {
   applyLinuxComputerUseRendererAvailabilityPatch,
   applyLinuxAvatarOverlayMousePassthroughPatch,
   applyBrowserUseNodeReplApprovalPatch,
+  applyLinuxChromeExtensionStatusPatch,
   applyLinuxAppUpdaterBridgePatch,
   applyLinuxAppUpdaterMenuPatch,
   applyLinuxExplicitIpcQuitPatch,
@@ -123,6 +124,18 @@ function computerUseRendererAvailabilityBundleFixture() {
 
 function computerUseInstallFlowBundleFixture() {
   return "function Qe({forceReloadPlugins:e,hostId:t}){let ne=f({featureName:`computer_use`,hostId:t}),re=!ne.isLoading&&ne.enabled,[L,R]=(0,Z.useState)({});return re}";
+}
+
+function chromeExtensionStatusBundleFixture() {
+  return [
+    "let r=require(`node:os`),i=require(`node:path`),o=require(`node:fs`);",
+    "var am=`com.google.Chrome`,om=`/usr/bin/open`,sm=/^[a-p]{32}$/;",
+    "function pm(e){if(!sm.test(e))throw Error(`Invalid extension id`);return e}",
+    "function cm(e){return`chrome://extensions/?id=${pm(e)}`}",
+    "function lm({extensionId:e,homeDir:t=(0,r.homedir)(),localAppDataDir:n=process.env.LOCALAPPDATA,platform:a=process.platform}){let s=pm(e),c=mm({homeDir:t,localAppDataDir:n,platform:a});return c==null||!(0,o.existsSync)(c)?!1:(0,o.readdirSync)(c,{withFileTypes:!0}).some(e=>e.isDirectory()&&(0,o.existsSync)((0,i.join)(c,e.name,`Extensions`,s)))}async function um({extensionId:e,platform:t=process.platform,detectChromeCommand:n=dm,runCommand:r=Hp}){if(t===`darwin`){await r(om,[`-b`,am,cm(e)]);return}if(t===`win32`){let t=n();if(t==null)throw Error(`Google Chrome is not installed`);await r(t,[cm(e)]);return}throw Error(`Opening Chrome extension settings is only supported on macOS and Windows`)}function dm(){return Rp(`google-chrome`)}",
+    "function mm({homeDir:e,localAppDataDir:t,platform:n}){return n===`darwin`?(0,i.join)(e,`Library`,`Application Support`,`Google`,`Chrome`):n===`win32`?(0,i.join)(t??(0,i.join)(e,`AppData`,`Local`),`Google`,`Chrome`,`User Data`):null}",
+    "function Rp(e){return e}async function Hp(){}",
+  ].join("");
 }
 
 function currentLaunchActionBundleFixture() {
@@ -986,6 +999,27 @@ test("auto-approves the app-provided Browser Use node_repl bridge", () => {
 
   assert.match(patched, /tools:\{js:\{approval_mode:`approve`\}\}/);
   assert.match(patched, /env:\{\[dt\]:l,\[ft\]:i\.nodePath/);
+});
+
+test("detects Chrome extension installation from Linux browser profiles", () => {
+  const patched = applyPatchTwice(
+    applyLinuxChromeExtensionStatusPatch,
+    chromeExtensionStatusBundleFixture(),
+  );
+
+  assert.match(patched, /function codexLinuxChromeProfileRoots/);
+  assert.match(patched, /`BraveSoftware`,`Brave-Browser`/);
+  assert.match(patched, /`google-chrome-unstable`/);
+  assert.match(
+    patched,
+    /if\(a===`linux`\)return codexLinuxChromeHasExtension\(\{extensionId:e,homeDir:t,platform:a\}\)/,
+  );
+  assert.match(
+    patched,
+    /if\(t===`linux`\)\{let t=codexLinuxChromeCommand\(\)\?\?n\(\);if\(t==null\)throw Error\(`Google Chrome or Brave is not installed`\);await r\(t,\[cm\(e\)\]\);return\}/,
+  );
+  assert.match(patched, /process\.env\.PATH\?\?``/);
+  assert.doesNotMatch(patched, /function codexLinuxChromeCommand\(\)\{for\(let e of\[[^\]]+\]\)\{let t=Rp/);
 });
 
 function withIsolatedHome(body) {
