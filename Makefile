@@ -216,37 +216,44 @@ package: maybe-build-updater
 
 install:
 	@echo "[make] Installing latest native package"
-	@format="$$( $(NATIVE_PKG_FORMAT_CMD) )"; \
+	@latest_matching_file() { \
+		local pattern="$$1"; \
+		local matches; \
+		matches="$$(compgen -G "$$pattern" || true)"; \
+		[ -n "$$matches" ] || return 0; \
+		printf '%s\n' "$$matches" | sort -V | tail -n 1; \
+	}; \
+	format="$$( $(NATIVE_PKG_FORMAT_CMD) )"; \
 	if [ "$$format" = "pacman" ]; then \
-		pkg="$${PKG:-$$(ls -1 $(PACMAN_GLOB) 2>/dev/null | sort -V | tail -n 1)}"; \
+		pkg="$${PKG:-$$(latest_matching_file "$(PACMAN_GLOB)")}"; \
 		if [ -z "$$pkg" ]; then \
 			echo "[make] No pacman package found. Run 'make pacman' first." >&2; exit 1; \
 		fi; \
 		echo "[make] Installing $$pkg"; \
 		sudo pacman -U --noconfirm "$$pkg"; \
 	elif [ "$$format" = "rpm" ] && command -v dnf >/dev/null 2>&1; then \
-		rpm="$${RPM:-$$(ls -1 $(RPM_GLOB) 2>/dev/null | sort -V | tail -n 1)}"; \
+		rpm="$${RPM:-$$(latest_matching_file "$(RPM_GLOB)")}"; \
 		if [ -z "$$rpm" ]; then \
 			echo "[make] No RPM package found. Run 'make rpm' first." >&2; exit 1; \
 		fi; \
 		echo "[make] Installing $$rpm"; \
 		sudo dnf install -y "$$rpm"; \
 	elif [ "$$format" = "rpm" ] && command -v zypper >/dev/null 2>&1; then \
-		rpm="$${RPM:-$$(ls -1 $(RPM_GLOB) 2>/dev/null | sort -V | tail -n 1)}"; \
+		rpm="$${RPM:-$$(latest_matching_file "$(RPM_GLOB)")}"; \
 		if [ -z "$$rpm" ]; then \
 			echo "[make] No RPM package found. Run 'make rpm' first." >&2; exit 1; \
 		fi; \
 		echo "[make] Installing $$rpm"; \
 		sudo zypper --non-interactive --no-gpg-checks install -y "$$rpm"; \
 	elif [ "$$format" = "rpm" ]; then \
-		rpm="$${RPM:-$$(ls -1 $(RPM_GLOB) 2>/dev/null | sort -V | tail -n 1)}"; \
+		rpm="$${RPM:-$$(latest_matching_file "$(RPM_GLOB)")}"; \
 		if [ -z "$$rpm" ]; then \
 			echo "[make] No RPM package found. Run 'make rpm' first." >&2; exit 1; \
 		fi; \
 		echo "[make] Installing $$rpm"; \
 		sudo rpm -Uvh "$$rpm"; \
 	elif [ "$$format" = "deb" ]; then \
-		deb="$${DEB:-$$(ls -1 $(DEB_GLOB) 2>/dev/null | sort -V | tail -n 1)}"; \
+		deb="$${DEB:-$$(latest_matching_file "$(DEB_GLOB)")}"; \
 		if [ -z "$$deb" ]; then \
 			echo "[make] No Debian package found. Run 'make deb' first." >&2; exit 1; \
 		fi; \

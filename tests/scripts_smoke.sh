@@ -584,6 +584,33 @@ SCRIPT
     assert_contains "$rpm_log" "Missing packaged launcher runtime helper"
 }
 
+test_make_install_reports_missing_native_packages() {
+    info "Checking make install missing-package diagnostics"
+    local workspace="$TMP_DIR/make-install-missing"
+    local output_log
+    local format
+    local expected
+
+    mkdir -p "$workspace/dist"
+
+    for format in pacman rpm deb; do
+        output_log="$workspace/$format.log"
+        case "$format" in
+            pacman) expected="No pacman package found. Run 'make pacman' first." ;;
+            rpm) expected="No RPM package found. Run 'make rpm' first." ;;
+            deb) expected="No Debian package found. Run 'make deb' first." ;;
+        esac
+
+        if make -f "$REPO_DIR/Makefile" -C "$workspace" install \
+            NATIVE_PKG_FORMAT_CMD="printf $format" >"$output_log" 2>&1
+        then
+            fail "make install should fail when no $format package exists"
+        fi
+
+        assert_contains "$output_log" "$expected"
+    done
+}
+
 test_make_build_app_uses_installer_download_flow_by_default() {
     info "Checking make build-app default DMG behavior"
     local workspace="$TMP_DIR/make-build-app"
@@ -2747,6 +2774,7 @@ main() {
     test_pacman_builder_without_updater_transition_hook
     test_appimage_builder_smoke
     test_missing_input_failure
+    test_make_install_reports_missing_native_packages
     test_make_build_app_uses_installer_download_flow_by_default
     test_make_build_app_fresh_uses_installer_fresh_flow
     test_upstream_build_app_workflow_tracks_dmg_metadata
