@@ -432,8 +432,9 @@ test_pacman_builder_without_updater_transition_hook() {
     local app_dir="$workspace/app"
     local dist_dir="$workspace/dist"
     local capture_dir="$workspace/capture"
+    local ampersand_tmpdir="$workspace/ampersand&tmp"
 
-    mkdir -p "$workspace" "$dist_dir" "$capture_dir"
+    mkdir -p "$workspace" "$dist_dir" "$capture_dir" "$ampersand_tmpdir"
     make_stub_bin_dir "$bin_dir"
     make_fake_app "$app_dir"
 
@@ -452,6 +453,7 @@ exit 99
 SCRIPT
     chmod +x "$bin_dir/makepkg" "$bin_dir/cargo"
 
+    TMPDIR="$ampersand_tmpdir" \
     PATH="$bin_dir:$PATH" \
     CAPTURE_DIR="$capture_dir" \
     APP_DIR_OVERRIDE="$app_dir" \
@@ -463,6 +465,8 @@ SCRIPT
     assert_file_exists "$dist_dir/codex-desktop-2026.03.24.120000-1-x86_64.pkg.tar.zst"
     assert_file_exists "$capture_dir/PKGBUILD"
     assert_file_exists "$capture_dir/codex-desktop.install"
+    assert_contains "$capture_dir/PKGBUILD" "ampersand&tmp"
+    assert_not_contains "$capture_dir/PKGBUILD" "__STAGING_DIR__"
     assert_contains "$capture_dir/PKGBUILD" "install=codex-desktop.install"
     assert_not_contains "$capture_dir/PKGBUILD" "'polkit'"
     assert_contains "$capture_dir/codex-desktop.install" "codex_no_updater_cleanup_update_manager_service"
