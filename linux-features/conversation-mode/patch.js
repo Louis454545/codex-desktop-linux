@@ -11,13 +11,20 @@ function applyReadAloudMainBundlePatch(source) {
   if (!source.includes(`"${HANDLER_NAME}":async`)) {
     return source;
   }
-  if (source.includes("source===`conversation`")) {
+  if (source.includes("requireEnabled:e.source!==`conversation`")) {
     return source;
   }
-  return source.replace(
-    "e.action===`speak`&&e.source===`button`?codexLinuxReadAloudSpeak(e.text)",
-    "e.action===`speak`&&(e.source===`button`||e.source===`conversation`)?codexLinuxReadAloudSpeak(e.text)",
-  );
+  const buttonOnly = "e.action===`speak`&&e.source===`button`?codexLinuxReadAloudSpeak(e.text)";
+  const oldConversation = "e.action===`speak`&&(e.source===`button`||e.source===`conversation`)?codexLinuxReadAloudSpeak(e.text)";
+  const withConversation = "e.action===`speak`&&(e.source===`button`||e.source===`conversation`)?codexLinuxReadAloudSpeak(e.text,{requireEnabled:e.source!==`conversation`})";
+  if (source.includes(oldConversation)) {
+    return source.replace(oldConversation, withConversation);
+  }
+  if (source.includes(buttonOnly)) {
+    return source.replace(buttonOnly, withConversation);
+  }
+  warn("Could not find read aloud speak source gate", "conversation mode read aloud main-bundle patch");
+  return source;
 }
 
 function conversationRuntimeSource() {

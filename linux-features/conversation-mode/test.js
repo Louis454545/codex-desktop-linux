@@ -352,7 +352,14 @@ test("conversation mode exposes optional patch descriptors when enabled", () => 
 test("main bundle patch allows conversation mode to use Read Aloud", () => {
   const patched = twice(applyReadAloudMainBundlePatch, mainBundleSource);
   assert.match(patched, /e\.source===`button`\|\|e\.source===`conversation`/);
-  assert.match(patched, /codexLinuxReadAloudSpeak\(e\.text\)/);
+  assert.match(patched, /codexLinuxReadAloudSpeak\(e\.text,\{requireEnabled:e\.source!==`conversation`\}\)/);
+});
+
+test("main bundle patch upgrades older conversation speech gates", () => {
+  const alreadyAllowed =
+    "function codexLinuxReadAloudHandle(e={}){return e.action===`config`?codexLinuxReadAloudConfig():e.action===`setup`?codexLinuxReadAloudSetup(e):e.action===`stop`?codexLinuxReadAloudStop():e.action===`speak`&&(e.source===`button`||e.source===`conversation`)?codexLinuxReadAloudSpeak(e.text):codexLinuxReadAloudReport({spoken:!1,reason:`not-explicit`})}var h={handlers:{\"linux-read-aloud\":async(e)=>codexLinuxReadAloudHandle(e),\"native-desktop-apps\":async()=>({apps:[]})}};";
+  const patched = twice(applyReadAloudMainBundlePatch, alreadyAllowed);
+  assert.match(patched, /codexLinuxReadAloudSpeak\(e\.text,\{requireEnabled:e\.source!==`conversation`\}\)/);
 });
 
 test("composer runtime appends one browser-side conversation controller", () => {
@@ -1465,7 +1472,7 @@ test("conversation mode patches matching app assets and records report entries",
         );
         assert.match(
           fs.readFileSync(path.join(buildDir, "main.js"), "utf8"),
-          /e\.source===`button`\|\|e\.source===`conversation`/,
+          /codexLinuxReadAloudSpeak\(e\.text,\{requireEnabled:e\.source!==`conversation`\}\)/,
         );
         assert.match(
           fs.readFileSync(path.join(assetsDir, "annotation-comment-editor-card-test.js"), "utf8"),
