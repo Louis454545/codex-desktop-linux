@@ -503,8 +503,6 @@ test("default core patch descriptors are grouped and unique", () => {
     "linux-single-instance",
     "linux-computer-use-ui-feature",
     "linux-computer-use-plugin-gate",
-    "linux-appshots-main-process",
-    "linux-appshots-hotkey",
     "linux-chrome-plugin-auto-install",
     "browser-use-node-repl-approval",
     "linux-chrome-extension-status",
@@ -524,8 +522,6 @@ test("default core patch descriptors are grouped and unique", () => {
     "opaque-window-default-resolved-theme",
     "linux-fast-mode-model-guard",
     "subagent-nickname-metadata-shape",
-    "linux-appshots-availability",
-    "linux-appshots-settings-hotkey",
     "linux-computer-use-ui-availability",
     "linux-computer-use-install-flow",
     "linux-app-updater-bridge",
@@ -1841,7 +1837,7 @@ test("enables the AppShots global hotkey on Linux", () => {
 
   assert.match(
     patched,
-    /e\.get\(`appshotHotkey`\)\?\?\(process\.platform===`linux`\?`DoubleShift`:uG\)/,
+    /e\.get\(`appshotHotkey`\)\?\?\(process\.platform===`linux`\?null:uG\)/,
   );
   assert.match(
     patched,
