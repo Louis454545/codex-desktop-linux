@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const {
+  escapeRegExp,
   findMatchingBrace,
 } = require("./shared.js");
 
@@ -489,7 +490,7 @@ function applyLinuxAppServerFeatureEnablementPatch(currentSource) {
     if (dynamicBuilderExtraMatch != null) {
       const [, loopBlock, , , enablementVar, featureKeyVar] = dynamicBuilderExtraMatch;
       const featureKeyDeclaration = new RegExp(
-        `${featureKeyVar}=\`remote_plugin\``,
+        `${escapeRegExp(featureKeyVar)}=\`remote_plugin\``,
         "u",
       );
       if (featureKeyDeclaration.test(currentSource)) {

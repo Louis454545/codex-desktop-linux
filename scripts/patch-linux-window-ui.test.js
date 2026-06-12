@@ -2860,6 +2860,20 @@ test("preserves supported dynamic remote_plugin in current app-server feature sy
   assert.match(patched, /n\[vI\]=t/);
 });
 
+test("preserves dynamic remote_plugin when the minified feature key contains regex syntax", () => {
+  const source = [
+    "var GF=[`apps`,`memories`,`plugins`,`tool_call_mcp_elicitation`,`tool_suggest`],v$I=`remote_plugin`;",
+    "function KF(){let e=(0,Z.c)(6),t=K(G),[n]=ts(`statsig_default_enable_features`),r=Lc(),i=Io(),a,o;",
+    "return e[0]!==r?(a=()=>{let r=qF(n,!0);qn(`set-experimental-feature-enablement-for-host`,{hostId:t,enablement:r})},o=[r],e[0]=r,e[1]=a,e[2]=o):(a=e[1],o=e[2]),null}",
+    "function qF(e,t){let n={};for(let r of GF){let i=e[r];i!=null&&(n[r]=i)}return n[v$I]=t,n}",
+  ].join("");
+
+  const patched = applyPatchTwice(applyLinuxAppServerFeatureEnablementPatch, source);
+
+  assert.equal(patched, source);
+  assert.match(patched, /n\[v\$I\]=t/);
+});
+
 test("keeps already-sanitized dynamic app-server feature sync quiet", () => {
   const source = [
     "var GF=[`apps`,`memories`,`plugins`,`tool_call_mcp_elicitation`,`tool_suggest`],vI=`remote_plugin`;",
